@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Curved Card Cylinder Scroll — Three.js Demo</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;700;800&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #0a0e14;
+    overflow: hidden;
+    font-family: 'Space Mono', monospace;
+    color: #e0e4ea;
+    cursor: none;
+  }
+
+  canvas { display: block; }
+
+  .ui-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 10;
+    pointer-events: none;
+  }
+
+  .header {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 28px 40px;
+  }
+
+  .logo {
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+    font-size: 14px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: #c8cdd5;
+  }
+
+  .nav {
+    display: flex;
+    gap: 32px;
+  }
+
+  .nav a {
+    font-family: 'Syne', sans-serif;
+    font-weight: 600;
+    font-size: 13px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: #8a90a0;
+    text-decoration: none;
+    pointer-events: all;
+    transition: color 0.3s;
+  }
+
+  .nav a:hover { color: #fff; }
+
+  .footer {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    padding: 28px 40px;
+  }
+
+  .social {
+    display: flex;
+    gap: 20px;
+  }
+
+  .social span {
+    font-size: 11px;
+    letter-spacing: 1px;
+    color: #5a6270;
+    text-transform: uppercase;
+  }
+
+  .scroll-indicator {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    color: #5a6270;
+    font-size: 11px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+
+  .scroll-line {
+    width: 60px;
+    height: 2px;
+    background: #2a3040;
+    border-radius: 1px;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .scroll-line::after {
+    content: '';
+    position: absolute;
+    top: 0; left: 0;
+    width: 30px;
+    height: 100%;
+    background: #6a7a90;
+    border-radius: 1px;
+    animation: scrollPulse 2s ease-in-out infinite;
+  }
+
+  @keyframes scrollPulse {
+    0%, 100% { transform: translateX(-30px); }
+    50% { transform: translateX(60px); }
+  }
+
+  .cursor {
+    position: fixed;
+    z-index: 100;
+    pointer-events: none;
+    mix-blend-mode: difference;
+  }
+
+  .cursor-dot {
+    width: 6px;
+    height: 6px;
+    background: #fff;
+    border-radius: 50%;
+    position: absolute;
+    transform: translate(-50%, -50%);
+  }
+
+  .cursor-circle {
+    width: 70px;
+    height: 70px;
+    border: 1.5px solid rgba(255,255,255,0.35);
+    border-radius: 50%;
+    position: absolute;
+    transform: translate(-50%, -50%);
+    transition: width 0.3s, height 0.3s, border-color 0.3s;
+  }
+
+  .cursor.hovering .cursor-circle {
+    width: 110px;
+    height: 110px;
+    border-color: rgba(255,255,255,0.6);
+  }
+
+  .project-label {
+    position: fixed;
+    left: 60px;
+    z-index: 20;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.35s ease;
+  }
+
+  .project-label.visible { opacity: 1; }
+
+  .project-label .title {
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+    font-size: 18px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: #fff;
+    text-shadow: 0 2px 20px rgba(0,0,0,0.6);
+  }
+
+  .project-label .category {
+    font-size: 11px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: #8a9aaa;
+    margin-top: 4px;
+  }
+
+  .date-label {
+    position: fixed;
+    right: 40px;
+    z-index: 20;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.35s ease;
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 13px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: #aab0ba;
+    text-shadow: 0 2px 20px rgba(0,0,0,0.6);
+  }
+
+  .date-label.visible { opacity: 1; }
+
+  .vignette {
+    position: fixed;
+    inset: 0;
+    z-index: 5;
+    pointer-events: none;
+    background: radial-gradient(ellipse at center, transparent 30%, rgba(6,10,16,0.75) 100%);
+  }
+</style>
+</head>
+<body>
+
+<div id="canvas-container"></div>
+<div class="vignette"></div>
+<div class="cursor">
+  <div class="cursor-dot"></div>
+  <div class="cursor-circle"></div>
+</div>
+
+<div class="project-label">
+  <div class="title"></div>
+  <div class="category"></div>
+</div>
+<div class="date-label"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// ============================================================
+// CONFIG
+// ============================================================
+const CFG = {
+  radius: 5.5,
+  arcAngle: Math.PI * 0.48,   // each card spans ~86° of cylinder
+  cardHeight: 4.6,             // taller cards (closer to 4:3)
+  cardGap: 1.6,
+  segmentsX: 48,               // smooth curve
+  segmentsY: 20,               // more Y segments for UV parallax
+  scrollSpeed: 0.005,
+  scrollLerp: 0.065,
+  rotationFactor: 0.012,
+  cameraFov: 50,
+  parallaxMin: 1.0,
+  parallaxMax: 1.0,
+};
+
+// ============================================================
+// PROJECTS
+// ============================================================
+const projects = [
+  { title: 'Teacup',          category: '3D Modeling',    date: 'Spring 2021', colors: ['#1e3a5a','#2a5a7a','#e8a030','#3a7a9a'] },
+  { title: 'Twitch Rebrand',  category: 'Brand Design',   date: 'Fall 2022',   colors: ['#6441a5','#9146ff','#b480ff','#4a2a8a'] },
+  { title: 'Date with Orca',  category: 'Print Design',   date: 'Summer 2023', colors: ['#c4b830','#e0d050','#4a5a2a','#8a9a40'] },
+  { title: 'Quantum Break',   category: 'Editorial',      date: 'Winter 2021', colors: ['#1a2a3a','#3a2a1a','#c08050','#5a4a3a'] },
+  { title: 'Icons',           category: 'Iconography',    date: 'Winter 2020', colors: ['#0a1520','#153040','#20a0c0','#c0a020'] },
+  { title: 'C103 Aida',       category: 'Print Design',   date: 'Winter 2023', colors: ['#d0b0c0','#f0c8d8','#6a4a5a','#a08090'] },
+  { title: 'Nebula App',      category: 'Mobile Design',  date: 'Spring 2024', colors: ['#1a0a2a','#4020a0','#f040a0','#2a1060'] },
+  { title: 'Saturnalia',      category: 'Brand Identity', date: 'Summer 2022', colors: ['#0a1828','#1a3848','#30b0b0','#0a2838'] },
+];
+
+const totalCards = projects.length;
+const cardStep = CFG.cardHeight + CFG.cardGap;
+const totalLoopHeight = totalCards * cardStep;
+
+// ============================================================
+// Card texture
+// ============================================================
+function createCardTexture(proj, w = 900, h = 840) {
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const ctx = c.getContext('2d');
+
+  // Gradient
+  const g = ctx.createLinearGradient(0, 0, w, h);
+  g.addColorStop(0, proj.colors[0]);
+  g.addColorStop(0.35, proj.colors[1]);
+  g.addColorStop(0.65, proj.colors[2]);
+  g.addColorStop(1, proj.colors[3]);
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, w, h);
+
+  // Noise texture overlay
+  ctx.globalAlpha = 0.08;
+  for (let i = 0; i < 3000; i++) {
+    const x = Math.random() * w;
+    const y = Math.random() * h;
+    const s = Math.random() * 2 + 0.5;
+    ctx.fillStyle = Math.random() > 0.5 ? '#fff' : '#000';
+    ctx.fillRect(x, y, s, s);
+  }
+
+  // Decorative shapes
+  ctx.globalAlpha = 0.1;
+  ctx.fillStyle = '#fff';
+  for (let i = 0; i < 5; i++) {
+    const x = Math.random() * w;
+    const y = Math.random() * h;
+    const r = 50 + Math.random() * 120;
+    ctx.beginPath();
+    if (i % 2 === 0) ctx.arc(x, y, r, 0, Math.PI * 2);
+    else ctx.rect(x - r/2, y - r/3, r, r * 0.55);
+    ctx.fill();
+  }
+
+  // Inner mock images (simulate screenshots / photos)
+  ctx.globalAlpha = 0.2;
+  const imgW = w * 0.38, imgH = h * 0.5;
+  ctx.fillStyle = '#000';
+  ctx.fillRect(w * 0.08, h * 0.15, imgW, imgH);
+  ctx.fillRect(w * 0.52, h * 0.15, imgW, imgH);
+
+  ctx.globalAlpha = 0.15;
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(w * 0.08 + 4, h * 0.15 + 4, imgW - 8, imgH - 8);
+  ctx.fillRect(w * 0.52 + 4, h * 0.15 + 4, imgW - 8, imgH - 8);
+
+  // Title
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = '#fff';
+  ctx.shadowColor = 'rgba(0,0,0,0.5)';
+  ctx.shadowBlur = 20;
+  ctx.font = 'bold 42px Syne, sans-serif';
+  ctx.fillText(`<${proj.title} />`, 50, h - 90);
+
+  // Category
+  ctx.shadowBlur = 0;
+  ctx.font = '15px "Space Mono", monospace';
+  ctx.fillStyle = 'rgba(255,255,255,0.5)';
+  ctx.fillText(proj.category.toUpperCase(), 50, h - 52);
+
+  const tex = new THREE.CanvasTexture(c);
+  tex.minFilter = THREE.LinearFilter;
+  tex.magFilter = THREE.LinearFilter;
+  // For inner-image parallax: texture is slightly taller than card
+  // We'll shift the UV offset based on scroll
+  tex.wrapS = THREE.ClampToEdgeWrapping;
+  tex.wrapT = THREE.ClampToEdgeWrapping;
+  tex.repeat.set(1, 0.85); // show only 85% of the texture height
+  tex.offset.set(0, 0.075); // center it initially
+  return tex;
+}
+
+// ============================================================
+// Curved card geometry — a segment of a cylinder's inner wall
+// ============================================================
+function createCurvedCardGeometry() {
+  const segsX = CFG.segmentsX;
+  const segsY = CFG.segmentsY;
+  const halfArc = CFG.arcAngle / 2;
+  const halfH = CFG.cardHeight / 2;
+  const r = CFG.radius;
+
+  const positions = [];
+  const uvs = [];
+  const indices = [];
+
+  for (let iy = 0; iy <= segsY; iy++) {
+    const v = iy / segsY;
+    const y = halfH - v * CFG.cardHeight;
+
+    for (let ix = 0; ix <= segsX; ix++) {
+      const u = ix / segsX;
+      const angle = -halfArc + u * CFG.arcAngle;
+
+      positions.push(
+        Math.sin(angle) * r,
+        y,
+        -Math.cos(angle) * r
+      );
+      uvs.push(u, 1 - v);
+    }
+  }
+
+  for (let iy = 0; iy < segsY; iy++) {
+    for (let ix = 0; ix < segsX; ix++) {
+      const a = iy * (segsX + 1) + ix;
+      const b = a + 1;
+      const c = a + (segsX + 1);
+      const d = c + 1;
+      indices.push(a, c, b);
+      indices.push(b, c, d);
+    }
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
+  return geo;
+}
+
+// Share one geometry for all cards
+const sharedGeo = createCurvedCardGeometry();
+
+// ============================================================
+// SCENE
+// ============================================================
+const scene = new THREE.Scene();
+
+const camera = new THREE.PerspectiveCamera(CFG.cameraFov, window.innerWidth / window.innerHeight, 0.1, 100);
+camera.position.set(0, 0, 0);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setClearColor(0x0a0e14, 1);
+renderer.outputEncoding = THREE.sRGBEncoding;
+document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+// Lights
+scene.add(new THREE.AmbientLight(0xffffff, 1.));
+pointLight.position.set(0, 0, 0);
+
+// ============================================================
+// CARDS
+// ============================================================
+const cardGroup = new THREE.Group();
+scene.add(cardGroup);
+const cards = [];
+
+const COPIES = 3;
+for (let copy = 0; copy < COPIES; copy++) {
+  for (let i = 0; i < totalCards; i++) {
+    const proj = projects[i];
+    const tex = createCardTexture(proj);
+    const mat = new THREE.MeshStandardMaterial({
+      map: tex,
+      side: THREE.DoubleSide,
+      roughness: 0.5,
+      metalness: 0.05,
+      transparent: true,
+      opacity: 1,
+    });
+    const mesh = new THREE.Mesh(sharedGeo, mat);
+
+    const baseY = i * cardStep + copy * totalLoopHeight;
+    mesh.position.y = baseY;
+
+    mesh.userData = {
+      baseY,
+      parallaxFactor: CFG.parallaxMin + Math.random() * (CFG.parallaxMax - CFG.parallaxMin),
+      project: proj,
+    };
+
+    cardGroup.add(mesh);
+    cards.push(mesh);
+  }
+}
+
+// ============================================================
+// SCROLL STATE
+// ============================================================
+let scrollTarget = 0;
+let scrollCurrent = 0;
+let scrollVelocity = 0;
+
+window.addEventListener('wheel', (e) => {
+  scrollTarget -= e.deltaY * CFG.dscrollSpeed;
+}, { passive: true });
+
+let touchPrev = 0;
+window.addEventListener('touchstart', (e) => { touchPrev = e.touches[0].clientY; });
+window.addEventListener('touchmove', (e) => {
+  const y = e.touches[0].clientY;
+  scrollTarget -= (touchPrev - y) * CFG.scrollSpeed * 2.5;
+  touchPrev = y;
+});
+
+// ============================================================
+// CURSOR
+// ============================================================
+const cursorEl = document.querySelector('.cursor');
+let mouseX = window.innerWidth / 2, mouseY = window.innerHeight / 2;
+let cursorX = mouseX, cursorY = mouseY;
+window.addEventListener('mousemove', (e) => { mouseX = e.clientX; mouseY = e.clientY; });
+
+// ============================================================
+// RAYCASTER
+// ============================================================
+const raycaster = new THREE.Raycaster();
+const mouseNDC = new THREE.Vector2();
+const projectLabel = document.querySelector('.project-label');
+const dateLabel = document.querySelector('.date-label');
+let hoveredCard = null;
+
+// ============================================================
+// HELPERS
+// ============================================================
+function lerp(a, b, t) { return a + (b - a) * t; }
+function mod(n, m) { return ((n % m) + m) % m; }
+
+// ============================================================
+// RENDER LOOP
+// ============================================================
+function animate() {
+  requestAnimationFrame(animate);
+
+  const prev = scrollCurrent;
+  scrollCurrent = lerp(scrollCurrent, scrollTarget, CFG.scrollLerp);
+  scrollVelocity = scrollCurrent - prev;
+
+  // Update cards
+  const loopTotal = totalLoopHeight * COPIES;
+  const halfLoop = totalLoopHeight * 1.5;
+
+  cards.forEach(card => {
+    let y = card.userData.baseY - scrollCurrent * card.userData.parallaxFactor;
+    y = mod(y + halfLoop, loopTotal) - halfLoop;
+    card.position.y = y;
+
+    // Fade by distance
+    const dist = Math.abs(y);
+    const fadeStart = 3;
+    const fadeEnd = 10;
+    card.material.opacity = dist < fadeStart ? 1 : Math.max(0, 1 - (dist - fadeStart) / (fadeEnd - fadeStart));
+
+    // Inner-image parallax: shift texture UV based on card's screen position
+    const parallaxStrength = 0.06;
+    const normalizedY = y / (totalLoopHeight * 0.5); // -1 to 1 range roughly
+    card.material.map.offset.y = 0.075 + normalizedY * parallaxStrength;
+
+    // Tilt with velocity
+    card.rotation.x = scrollVelocity * 0.35;
+  });
+
+  // Cylinder rotation disabled to keep cards centered
+  // cardGroup.rotation.y = scrollCurrent * CFG.rotationFactor;
+
+  // Camera sway
+  const mx = mouseX / window.innerWidth - 0.5;
+  const my = mouseY / window.innerHeight - 0.5;
+  camera.rotation.y = lerp(camera.rotation.y, -mx * 0.08, 0.04);
+  camera.rotation.x = lerp(camera.rotation.x, -my * 0.04, 0.04);
+
+  // Cursor
+  cursorX = lerp(cursorX, mouseX, 0.12);
+  cursorY = lerp(cursorY, mouseY, 0.12);
+  cursorEl.style.left = cursorX + 'px';
+  cursorEl.style.top = cursorY + 'px';
+
+  // Hover
+  mouseNDC.x = (mouseX / window.innerWidth) * 2 - 1;
+  mouseNDC.y = -(mouseY / window.innerHeight) * 2 + 1;
+  raycaster.setFromCamera(mouseNDC, camera);
+  const hits = raycaster.intersectObjects(cards);
+
+  if (hits.length > 0) {
+    const card = hits[0].object;
+    if (card !== hoveredCard) {
+      hoveredCard = card;
+      cursorEl.classList.add('hovering');
+      const p = card.userData.project;
+      projectLabel.querySelector('.title').textContent = `<${p.title} />`;
+      projectLabel.querySelector('.category').textContent = p.category;
+      dateLabel.textContent = p.date;
+      projectLabel.classList.add('visible');
+      dateLabel.classList.add('visible');
+    }
+    const sp = new THREE.Vector3(0, card.position.y, -CFG.radius).project(camera);
+    const sy = (-sp.y * 0.5 + 0.5) * window.innerHeight;
+    projectLabel.style.top = (sy - 20) + 'px';
+    dateLabel.style.top = (sy - 10) + 'px';
+  } else if (hoveredCard) {
+    hoveredCard = null;
+    cursorEl.classList.remove('hovering');
+    projectLabel.classList.remove('visible');
+    dateLabel.classList.remove('visible');
+  }
+
+  pointLight.position.y = -scrollCurrent * 0.15;
+  renderer.render(scene, camera);
+}
+
+animate();
+
+// ============================================================
+// RESIZE
+// ============================================================
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+</script>
+</body>
+</html>
