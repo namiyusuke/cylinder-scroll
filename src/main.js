@@ -17,6 +17,8 @@ const CFG = {
   cameraFov: 50,
   parallaxMin: 1.0,
   parallaxMax: 1.0,
+  bendStrength: 0.55,       // シェーダー曲げ強度（大きい=より奥に引き込む）
+  bendTransition: 3.,      // この距離あたりからY移動→Z移動に遷移
 };
 
 // ============================================================
@@ -51,57 +53,15 @@ function loadCardTexture(imagePath) {
 }
 
 // ============================================================
-// Curved card geometry — a segment of a cylinder's inner wall
+// Plane card geometry
 // ============================================================
-function createCurvedCardGeometry() {
-  const segsX = CFG.segmentsX;
-  const segsY = CFG.segmentsY;
-  const halfArc = CFG.arcAngle / 2;
-  const halfH = CFG.cardHeight / 2;
-  const r = CFG.radius;
-
-  const positions = [];
-  const uvs = [];
-  const indices = [];
-
-  for (let iy = 0; iy <= segsY; iy++) {
-    const v = iy / segsY;
-    const y = halfH - v * CFG.cardHeight;
-
-    for (let ix = 0; ix <= segsX; ix++) {
-      const u = ix / segsX;
-      const angle = -halfArc + u * CFG.arcAngle;
-
-      positions.push(
-        Math.sin(angle) * r,
-        y,
-        -Math.cos(angle) * r
-      );
-      uvs.push(u, 1 - v);
-    }
-  }
-
-  for (let iy = 0; iy < segsY; iy++) {
-    for (let ix = 0; ix < segsX; ix++) {
-      const a = iy * (segsX + 1) + ix;
-      const b = a + 1;
-      const c = a + (segsX + 1);
-      const d = c + 1;
-      indices.push(a, c, b);
-      indices.push(b, c, d);
-    }
-  }
-
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
-  geo.setIndex(indices);
-  geo.computeVertexNormals();
-  return geo;
-}
-
-// Share one geometry for all cards
-const sharedGeo = createCurvedCardGeometry();
+const cardWidth = 2 * CFG.radius * Math.sin(CFG.arcAngle / 2); // 元の弧の横幅に合わせる
+const sharedGeo = new THREE.PlaneGeometry(
+  cardWidth,
+  CFG.cardHeight,
+  CFG.segmentsX,
+  CFG.segmentsY,
+);
 
 // ============================================================
 // SCENE
@@ -144,6 +104,39 @@ for (let copy = 0; copy < COPIES; copy++) {
       transparent: true,
       opacity: 1,
     });
+
+    // ---- shader injection: uDepth で頂点をZ方向に押し込む ----
+    mat.userData.uniforms = {
+      uDepth:  { value: 0.0 },
+      uHalfH:  { value: CFG.cardHeight / 2 },
+    };
+    mat.onBeforeCompile = (shader) => {
+      shader.uniforms.uDepth  = mat.userData.uniforms.uDepth;
+      shader.uniforms.uHalfH  = mat.userData.uniforms.uHalfH;
+
+      // uniform 宣言を追加
+      shader.vertexShader = shader.vertexShader.replace(
+        '#include <common>',
+        /* glsl */`
+        #include <common>
+        uniform float uDepth;
+        uniform float uHalfH;
+        `
+      );
+
+      // 頂点変位: カード内のY位置に応じてZを押し込む
+      shader.vertexShader = shader.vertexShader.replace(
+        '#include <begin_vertex>',
+        /* glsl */`
+        #include <begin_vertex>
+        float ny = clamp(transformed.y / uHalfH, -1., 1.); // -.7 (下端) ~ +.7 (上端)
+        float tilt  = uDepth * ny;                    // 線形: 方向性のある傾き
+        float curve = abs(uDepth) * ny * ny * 0.5;    // 二次: 凹面的な湾曲
+        transformed.z -= (tilt + curve);
+        `
+      );
+    };
+
     const mesh = new THREE.Mesh(sharedGeo, mat);
 
     const baseY = i * cardStep + copy * totalLoopHeight;
@@ -218,9 +211,8 @@ function animate() {
   cards.forEach(card => {
     let y = card.userData.baseY - scrollCurrent * card.userData.parallaxFactor;
     y = mod(y + halfLoop, loopTotal) - halfLoop;
-    card.position.y = y;
 
-    // Fade by distance
+    // Fade by distance (logical y — before bend transformation)
     const dist = Math.abs(y);
     const fadeStart = 3;
     const fadeEnd = 10;
@@ -231,8 +223,25 @@ function animate() {
     const normalizedY = y / (totalLoopHeight * 0.5);
     card.material.map.offset.y = 0.075 + normalizedY * parallaxStrength;
 
-    // Tilt with velocity
-    card.rotation.x = scrollVelocity * 0.35;
+    // Y→Z遷移: tanhでYを頭打ちにし、余った分をZ(奥)に流す
+    const tY = CFG.bendTransition;
+    const absY = Math.abs(y);
+    const sY = Math.sign(y) || 1;
+    const cappedY = tY * Math.tanh(y / tY);
+    const zDepth = absY - Math.abs(cappedY);
+
+    // blend: 0(中心)→1(完全に遷移済み)
+    const blend = Math.tanh(absY / tY);
+
+    card.position.y = cappedY;
+    card.position.z = -CFG.radius - zDepth;
+
+    // 回転: 0→π/2 で面がZ軸に平行になる
+    card.rotation.x = -sY * (Math.PI / 2) * blend * blend + scrollVelocity * 0.35;
+
+    // シェーダー曲げ: 遷移中だけピーク、曲がり切ったら平面に戻る
+    const bendPhase = Math.sin(blend * Math.PI);
+    card.material.userData.uniforms.uDepth.value = sY * bendPhase * CFG.bendStrength * 2;
   });
 
   // Camera sway
