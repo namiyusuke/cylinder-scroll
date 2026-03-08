@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import './style.css';
-
+import GUI from 'lil-gui'
 // ============================================================
 // CONFIG
 // ============================================================
@@ -30,7 +30,7 @@ const projects = [
   { title: '',  category: '',   date: '', image: '/dummy03.png' },
   { title: '',   category: '',      date: '', image: '/dummy01.png' },
 ];
-
+const gui = new GUI()
 const totalCards = projects.length;
 const cardStep = CFG.cardHeight + CFG.cardGap;
 const totalLoopHeight = totalCards * cardStep;
@@ -71,18 +71,129 @@ const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(CFG.cameraFov, window.innerWidth / window.innerHeight, 0.1, 100);
 camera.position.set(0, 0, 1);
 
-const renderer = new THREE.WebGLRenderer({ antialias: true });
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-renderer.setClearColor(0x0a0e14, 1);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.autoClear = false;
 document.getElementById('canvas-container').appendChild(renderer.domElement);
 
-// Lights
-scene.add(new THREE.AmbientLight(0xffffff, 1.0));
-const pointLight = new THREE.PointLight(0xffffff, 1.5, 30);
-pointLight.position.set(0, 0, 0);
-scene.add(pointLight);
+// ============================================================
+// BACKGROUND — Simplex noise gradient shader
+// ============================================================
+const bgScene  = new THREE.Scene();
+const bgCamera = new THREE.Camera();
+
+const bgFragmentShader = /* glsl */`
+  precision highp float;
+  varying vec2 v_uv;
+  uniform float u_time;
+  uniform float u_speed;
+  uniform float u_scale;
+  uniform float u_softness;
+  uniform vec2  u_resolution;
+
+  vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+  vec4 mod289(vec4 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+  vec4 permute(vec4 x) { return mod289(((x * 34.0) + 10.0) * x); }
+  vec4 taylorInvSqrt(vec4 r) { return 1.79284291400159 - 0.85373472095314 * r; }
+
+  float snoise(vec3 v) {
+    const vec2 C = vec2(1.0 / 6.0, 1.0 / 3.0);
+    const vec4 D = vec4(0.0, 0.5, 1.0, 2.0);
+    vec3 i  = floor(v + dot(v, C.yyy));
+    vec3 x0 = v - i + dot(i, C.xxx);
+    vec3 g  = step(x0.yzx, x0.xyz);
+    vec3 l  = 1.0 - g;
+    vec3 i1 = min(g.xyz, l.zxy);
+    vec3 i2 = max(g.xyz, l.zxy);
+    vec3 x1 = x0 - i1 + C.xxx;
+    vec3 x2 = x0 - i2 + C.yyy;
+    vec3 x3 = x0 - D.yyy;
+    i = mod289(i);
+    vec4 p = permute(permute(permute(
+      i.z + vec4(0.0, i1.z, i2.z, 1.0))
+      + i.y + vec4(0.0, i1.y, i2.y, 1.0))
+      + i.x + vec4(0.0, i1.x, i2.x, 1.0));
+    float n_ = 0.142857142857;
+    vec3  ns = n_ * D.wyz - D.xzx;
+    vec4  j  = p - 49.0 * floor(p * ns.z * ns.z);
+    vec4  x_ = floor(j * ns.z);
+    vec4  y_ = floor(j - 7.0 * x_);
+    vec4  x  = x_ * ns.x + ns.yyyy;
+    vec4  y  = y_ * ns.x + ns.yyyy;
+    vec4  h  = 1.0 - abs(x) - abs(y);
+    vec4  b0 = vec4(x.xy, y.xy);
+    vec4  b1 = vec4(x.zw, y.zw);
+    vec4  s0 = floor(b0) * 2.0 + 1.0;
+    vec4  s1 = floor(b1) * 2.0 + 1.0;
+    vec4  sh = -step(h, vec4(0.0));
+    vec4  a0 = b0.xzyw + s0.xzyw * sh.xxyy;
+    vec4  a1 = b1.xzyw + s1.xzyw * sh.zzww;
+    vec3  p0 = vec3(a0.xy, h.x);
+    vec3  p1 = vec3(a0.zw, h.y);
+    vec3  p2 = vec3(a1.xy, h.z);
+    vec3  p3 = vec3(a1.zw, h.w);
+    vec4  norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2,p2), dot(p3,p3)));
+    p0 *= norm.x; p1 *= norm.y; p2 *= norm.z; p3 *= norm.w;
+    vec4  m = max(0.5 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);
+    m = m * m;
+    return 105.0 * dot(m*m, vec4(dot(p0,x0), dot(p1,x1), dot(p2,x2), dot(p3,x3)));
+  }
+
+  void main() {
+    float aspect = u_resolution.x / u_resolution.y;
+    vec2 uv = v_uv;
+    uv.x *= aspect;
+    float t = u_time * u_speed;
+    vec2 st = uv * u_scale;
+    float n1 = snoise(vec3(st,                           t      ));
+    float n2 = snoise(vec3(st * 0.8 + vec2(17.1, 31.7), t * 0.7));
+    float n3 = snoise(vec3(st * 0.6 + vec2(53.4, 89.2), t * 0.5));
+    float n = (n1 * 0.45 + n2 * 0.35 + n3 * 0.2);
+    n = n * 0.35 + 0.5;
+    float lo = 0.5 - u_softness * 0.5;
+    float hi = 0.5 + u_softness * 0.5;
+    n = smoothstep(lo, hi, n);
+    n = n * n * (3.0 - 2.0 * n);
+    vec3 black = vec3(0.04, 0.04, 0.05);
+    vec3 white = vec3(0.96, 0.95, 0.93);
+    vec3 color = mix(black, white, n);
+    gl_FragColor = vec4(color, 1.0);
+  }
+`;
+
+const bgMesh = new THREE.Mesh(
+  new THREE.PlaneGeometry(2, 2),
+  new THREE.ShaderMaterial({
+    uniforms: {
+      u_time:       { value: 0 },
+      u_speed:      { value: 0.16 },
+      u_scale:      { value: 0.5 },
+      u_softness:   { value: 0.9 },
+      u_resolution: { value: new THREE.Vector2(
+        window.innerWidth * renderer.getPixelRatio(),
+        window.innerHeight * renderer.getPixelRatio()
+      )},
+    },
+    vertexShader: /* glsl */`
+      varying vec2 v_uv;
+      void main() {
+        v_uv = uv;
+        gl_Position = vec4(position.xy, 1.0, 1.0);
+      }
+    `,
+    fragmentShader: bgFragmentShader,
+    depthWrite: false,
+    depthTest: false,
+  })
+);
+bgScene.add(bgMesh);
+gui.add(bgMesh.material.uniforms.u_time, "value").min(0).max(10).step(0.1).name("u_time");
+gui.add(bgMesh.material.uniforms.u_speed, "value").min(0).max(1).step(0.1).name("u_speed");
+gui.add(bgMesh.material.uniforms.u_scale, "value").min(0).max(1).step(0.1).name("u_scale");
+gui.add(bgMesh.material.uniforms.u_softness, "value").min(0).max(1).step(0.1).name("u_softness");
+// Lights（ShaderMaterialには効かないため削除済み）
 
 // ============================================================
 // CARDS
@@ -106,6 +217,7 @@ for (let copy = 0; copy < COPIES; copy++) {
         uBendRadius: { value: CFG.bendRadius },
         uBendArc: { value: bendArcLength },
         uTime:    { value: 0 },
+        uBrightness: { value: 1.0 },
       },
       vertexShader: /* glsl */`
         uniform float uCardY;
@@ -166,6 +278,7 @@ for (let copy = 0; copy < COPIES; copy++) {
       fragmentShader: /* glsl */`
         uniform sampler2D map;
         uniform float uOpacity;
+        uniform float uBrightness;
         uniform vec2 uUvOffset;
         varying float vElevation;
         varying vec2 vUv;
@@ -173,21 +286,10 @@ for (let copy = 0; copy < COPIES; copy++) {
         varying vec3 vViewPos;
 
         void main() {
-          // テクスチャサンプリング（UVオフセット付き）
           vec2 uv = vUv + uUvOffset;
           vec4 texColor = texture2D(map, uv);
-
-          // sRGB → リニア変換
-          texColor.rgb = pow(texColor.rgb, vec3(2.2));
-          // 簡易ライティング（ambient + diffuse）
-          vec3 lightDir = normalize(vec3(0.0, 0.0, 1.0));
-          vec3 norm = normalize(vNormal);
-          float diff = max(dot(norm, lightDir), 0.0);
-          float ambient = 0.6;
-          float light = ambient + (1.0 - ambient) * diff;
-          vec3 color = texColor.rgb * light * max(1.0, 1.0 + vElevation * 2.0);
-          // リニア → sRGB 変換
-          color = pow(color, vec3(1.0 / 2.2));
+          // フラットライティング + elevation + brightness
+          vec3 color = texColor.rgb * uBrightness * max(1.0, 1.0 + vElevation * 2.0);
           gl_FragColor = vec4(color, texColor.a * uOpacity);
         }
       `,
@@ -208,6 +310,12 @@ for (let copy = 0; copy < COPIES; copy++) {
     cards.push(mesh);
   }
 }
+
+// Brightness GUI（全カード共通）
+const brightnessCtrl = { brightness: 1.0 };
+gui.add(brightnessCtrl, 'brightness', 0, 3, 0.05).name('brightness').onChange(v => {
+  cards.forEach(c => { c.material.uniforms.uBrightness.value = v; });
+});
 
 // ============================================================
 // SCROLL STATE
@@ -316,7 +424,11 @@ function animate() {
     cursorEl.classList.remove('hovering');
   }
 
-  pointLight.position.y = -scrollCurrent * 0.15;
+  // Background shader update & render
+  bgMesh.material.uniforms.u_time.value = elapsedTime;
+
+  renderer.clear();
+  renderer.render(bgScene, bgCamera);
   renderer.render(scene, camera);
 }
 
@@ -329,4 +441,8 @@ window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
+  bgMesh.material.uniforms.u_resolution.value.set(
+    window.innerWidth  * renderer.getPixelRatio(),
+    window.innerHeight * renderer.getPixelRatio()
+  );
 });
