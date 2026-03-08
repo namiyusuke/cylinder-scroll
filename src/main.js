@@ -25,10 +25,9 @@ const CFG = {
 // PROJECTS — dummy01〜03を順番に割り当て
 // ============================================================
 const projects = [
-  { title: '',  category: '', date: '', image: '/dummy01.png' },
+  { title: '',  category: '', date: '', image: '/test.mp4' },
   { title: '',  category: '',   date: '',   image: '/dummy02.png' },
   { title: '',  category: '',   date: '', image: '/dummy03.png' },
-  { title: '',   category: '',      date: '', image: '/dummy01.png' },
 ];
 const gui = new GUI()
 const totalCards = projects.length;
@@ -42,6 +41,21 @@ const bendArcLength = (Math.PI / 2) * CFG.bendRadius;
 const textureLoader = new THREE.TextureLoader();
 
 function loadCardTexture(imagePath) {
+  const isVideo = /\.(mp4|webm|ogg)$/i.test(imagePath);
+  if (isVideo) {
+    const video = document.createElement('video');
+    video.src = imagePath;
+    video.loop = true;
+    video.muted = true;
+    video.playsInline = true;
+    video.autoplay = true;
+    video.play();
+    const tex = new THREE.VideoTexture(video);
+    tex.minFilter = THREE.LinearFilter;
+    tex.magFilter = THREE.LinearFilter;
+    tex.colorSpace = THREE.SRGBColorSpace;
+    return tex;
+  }
   const tex = textureLoader.load(imagePath);
   tex.minFilter = THREE.LinearFilter;
   tex.magFilter = THREE.LinearFilter;
@@ -287,6 +301,7 @@ for (let copy = 0; copy < COPIES; copy++) {
 
         void main() {
           vec2 uv = vUv + uUvOffset;
+          if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) discard;
           vec4 texColor = texture2D(map, uv);
           // フラットライティング + elevation + brightness
           vec3 color = texColor.rgb * uBrightness * max(1.0, 1.0 + vElevation * 2.0);
@@ -380,11 +395,6 @@ function animate() {
     const fadeStart = 3;
     const fadeEnd = 10;
     card.material.uniforms.uOpacity.value = dist < fadeStart ? 1 : Math.max(0, 1 - (dist - fadeStart) / (fadeEnd - fadeStart));
-
-    // Inner-image parallax
-    const parallaxStrength = 0.06;
-    const normalizedY = y / (totalLoopHeight * 0.5);
-    card.material.uniforms.uUvOffset.value.set(0, 0.075 + normalizedY * parallaxStrength);
 
     // uniform 更新
     card.position.y = y;
