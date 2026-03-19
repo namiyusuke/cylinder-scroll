@@ -6,8 +6,8 @@ import GUI from 'lil-gui'
 // ============================================================
 const CFG = {
   radius: 5.5,
-  arcAngle: Math.PI * 0.25,
-  cardHeight: 3.0,
+  arcAngle: 2 * Math.asin((5.0 * (540 / 400)) / (2 * 5.5)), // cardHeight * aspect / (2 * radius)
+  cardHeight: 5.0,
   cardGap: 1.,
   segmentsX: 300,
   segmentsY: 300,
@@ -25,9 +25,9 @@ const CFG = {
 // PROJECTS — dummy01〜03を順番に割り当て
 // ============================================================
 const projects = [
-  { title: '',  category: '', date: '', image: '/test.mp4' },
-  { title: '',  category: '',   date: '',   image: '/dummy02.png' },
-  { title: '',  category: '',   date: '', image: '/dummy03.png' },
+  { title: 'ProjectA',  category: '', date: '', image: '/test.mp4' },
+  { title: 'ProjectB',  category: '',   date: '',   image: '/dummy02.png' },
+  { title: 'ProjectC',  category: '',   date: '', image: '/dummy03.png' },
 ];
 const gui = new GUI()
 const totalCards = projects.length;
@@ -161,7 +161,7 @@ const bgFragmentShader = /* glsl */`
     uv.x *= aspect;
     float t = u_time * u_speed;
     vec2 st = uv * u_scale;
-    float n1 = snoise(vec3(st,                           t      ));
+    float n1 = snoise(vec3(st,t));
     float n2 = snoise(vec3(st * 0.8 + vec2(17.1, 31.7), t * 0.7));
     float n3 = snoise(vec3(st * 0.6 + vec2(53.4, 89.2), t * 0.5));
     float n = (n1 * 0.45 + n2 * 0.35 + n3 * 0.2);
@@ -213,6 +213,7 @@ gui.add(bgMesh.material.uniforms.u_softness, "value").min(0).max(1).step(0.1).na
 // CARDS
 // ============================================================
 const cardGroup = new THREE.Group();
+cardGroup.rotation.z = Math.PI * .1;
 scene.add(cardGroup);
 const cards = [];
 
@@ -224,7 +225,7 @@ for (let copy = 0; copy < COPIES; copy++) {
     const mat = new THREE.ShaderMaterial({
       uniforms: {
         map:         { value: tex },
-        uOpacity:    { value: 1.0 },
+        uOpacity:    { value: 2.0 },
         uUvOffset:   { value: new THREE.Vector2(0, 0) },
         uCardY:      { value: 0.0 },
         uBendStart:  { value: CFG.bendStart },
@@ -281,7 +282,7 @@ for (let copy = 0; copy < COPIES; copy++) {
           vNormal = normalize(normalMatrix * n);
           vec4 modelPosition = modelMatrix * vec4(pos, 1.0);
           float elevation = sin(modelPosition.x * 1. + uTime * 2.) * 0.2;
-          elevation += sin(modelPosition.y * 1. + uTime * 2.) * 0.2;
+          elevation += sin(modelPosition.y * 1. + uTime * 2.) * 0.02;
           modelPosition.z += elevation;
           vElevation = elevation;
           vec4 mvPos =  viewMatrix * modelPosition;
@@ -368,6 +369,14 @@ const mouseNDC = new THREE.Vector2();
 let hoveredCard = null;
 
 // ============================================================
+// PROJECT LABEL (center card title)
+// ============================================================
+const projectLabelEl = document.getElementById('project-label');
+const projectTitleEl = projectLabelEl.querySelector('.title');
+const projectCategoryEl = projectLabelEl.querySelector('.category');
+let currentCenterProject = null;
+
+// ============================================================
 // HELPERS
 // ============================================================
 function lerp(a, b, t) { return a + (b - a) * t; }
@@ -402,6 +411,41 @@ function animate() {
     card.rotation.x = scrollVelocity * 0.35;
     card.material.uniforms.uCardY.value = y;
   });
+
+  // Center card title detection
+  let closestDist = Infinity;
+  let closestCard = null;
+  cards.forEach(card => {
+    const d = Math.abs(card.position.y);
+    if (d < closestDist) {
+      closestDist = d;
+      closestCard = card;
+    }
+  });
+
+  const centerThreshold = cardStep * 0.5;
+  if (closestCard && closestDist < centerThreshold) {
+    const proj = closestCard.userData.project;
+    if (proj !== currentCenterProject) {
+      currentCenterProject = proj;
+      // 一文字ずつspanで囲む
+      projectTitleEl.innerHTML = [...proj.title].map((ch, i) =>
+        `<span style="animation-delay:${i * 0.04}s">${ch === ' ' ? '&nbsp;' : ch}</span>`
+      ).join('');
+      projectCategoryEl.textContent = proj.category;
+    }
+    // ラベルのY位置をカードのスクリーン座標に合わせる
+    // const screenPos = new THREE.Vector3(0, closestCard.position.y, -CFG.radius).project(camera);
+    // const screenY = (-screenPos.y * 0.5 + 0.5) * window.innerHeight;
+    // projectLabelEl.style.top = screenY + 'px';
+    // 中央に近いほど不透明にする
+    const opacity = 1;
+    projectLabelEl.style.opacity = opacity;
+    projectLabelEl.classList.add('visible');
+  } else {
+    projectLabelEl.classList.remove('visible');
+    currentCenterProject = null;
+  }
 
   // Camera sway
   const mx = mouseX / window.innerWidth - 0.5;
