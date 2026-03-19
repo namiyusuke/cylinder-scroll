@@ -25,9 +25,9 @@ const CFG = {
 // PROJECTS — dummy01〜03を順番に割り当て
 // ============================================================
 const projects = [
-  { title: 'ProjectA',  category: '', date: '', image: '/test.mp4' },
-  { title: 'ProjectB',  category: '',   date: '',   image: '/dummy02.png' },
-  { title: 'ProjectC',  category: '',   date: '', image: '/dummy03.png' },
+  { title: 'about',  category: '', date: '', image: '/dummy02.webp' },
+  { title: 'about',  category: '',   date: '',   image: '/dummy02.webp' },
+  { title: 'about',  category: '',   date: '', image: '/dummy02.webp' },
 ];
 const gui = new GUI()
 const totalCards = projects.length;
