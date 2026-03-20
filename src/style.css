@@ -109,7 +109,6 @@ canvas { display: block; }
   position: fixed;
   left: 60px;
   z-index: 20;
-  pointer-events: none;
   opacity: 0;
   inset: 0;
   margin: auto;
@@ -175,4 +174,33 @@ canvas { display: block; }
   z-index: 5;
   pointer-events: none;
   background: radial-gradient(ellipse at center, transparent 30%, rgba(6,10,16,0.75) 100%);
+}
+.link{
+  width: 60px;
+  height: 60px;
+  display: inline-block;
+  border-radius: 50%;
+  background: #2a3040;
+  color: #fff;
+  cursor: pointer;
+  position: relative;
+  margin-inline: auto;
+}
+.link::after {
+  content: '→';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 24px;
+  font-weight: 700;
+}
+p:has(.link) {
+  text-align: center;
+}
+#swup {
+  position: relative;
+  z-index: 1;
+  background: #0a0e14;
+  min-height: 100vh;
 }

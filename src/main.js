@@ -1,7 +1,9 @@
 import * as THREE from 'three';
 import './style.css';
 import GUI from 'lil-gui'
-// ============================================================
+
+export default function initThreeScene() {
+  // ============================================================
 // CONFIG
 // ============================================================
 const CFG = {
@@ -25,9 +27,9 @@ const CFG = {
 // PROJECTS — dummy01〜03を順番に割り当て
 // ============================================================
 const projects = [
-  { title: 'about',  category: '', date: '', image: '/dummy02.webp' },
-  { title: 'about',  category: '',   date: '',   image: '/dummy02.webp' },
-  { title: 'about',  category: '',   date: '', image: '/dummy02.webp' },
+  { title: 'about',  category: '', date: '', image: '/dummy02.webp' ,link:"/about.html"},
+  { title: 'about',  category: '',   date: '',   image: '/dummy02.webp',link:"/about2/" },
+  { title: 'about',  category: '',   date: '', image: '/dummy02.webp',link:"/about3/" },
 ];
 const gui = new GUI()
 const totalCards = projects.length;
@@ -374,6 +376,7 @@ let hoveredCard = null;
 const projectLabelEl = document.getElementById('project-label');
 const projectTitleEl = projectLabelEl.querySelector('.title');
 const projectCategoryEl = projectLabelEl.querySelector('.category');
+const projectLinkEl = projectLabelEl.querySelector('.link');
 let currentCenterProject = null;
 
 // ============================================================
@@ -385,8 +388,9 @@ function mod(n, m) { return ((n % m) + m) % m; }
 // ============================================================
 // RENDER LOOP
 // ============================================================
+let rafId;
 function animate() {
-  requestAnimationFrame(animate);
+  rafId = requestAnimationFrame(animate);
   const elapsedTime = performance.now() * 0.001;
   const prev = scrollCurrent;
   scrollCurrent = lerp(scrollCurrent, scrollTarget, CFG.scrollLerp);
@@ -433,6 +437,7 @@ function animate() {
         `<span style="animation-delay:${i * 0.04}s">${ch === ' ' ? '&nbsp;' : ch}</span>`
       ).join('');
       projectCategoryEl.textContent = proj.category;
+      projectLinkEl.setAttribute("href", proj.link)
     }
     // ラベルのY位置をカードのスクリーン座標に合わせる
     // const screenPos = new THREE.Vector3(0, closestCard.position.y, -CFG.radius).project(camera);
@@ -500,3 +505,12 @@ window.addEventListener('resize', () => {
     window.innerHeight * renderer.getPixelRatio()
   );
 });
+
+return {
+  renderer,
+  destroy() {
+    cancelAnimationFrame(rafId);
+    renderer.dispose();
+  },
+};
+}
